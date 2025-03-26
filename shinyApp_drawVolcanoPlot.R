@@ -1,0 +1,96 @@
+library(shiny)
+library(ggplot2)
+library(ggrepel)
+library(ggpubr)
+library(dplyr)
+
+ui <- fluidPage(
+  titlePanel("Volcano Plot Generator"),
+  sidebarLayout(
+    sidebarPanel(
+      fileInput("file", "Upload your data (CSV)"),
+      textInput("title", "Plot Title", "Volcano Plot"),
+      numericInput("pval_cutoff", "P-value Cutoff", 0.05),
+      numericInput("logFC_cutoff", "LogFC Cutoff", 1),
+      numericInput("n_label", "Number of Labels", 20),
+      actionButton("plot_button", "Generate Plot")
+    ),
+    mainPanel(
+      plotOutput("volcano_plot")
+    )
+  )
+)
+
+server <- function(input, output) {
+  dat <- reactiveVal(NULL)
+  
+  observeEvent(input$file, {
+    req(input$file)
+    tryCatch({
+      dat(read.csv(input$file$datapath))
+    }, error = function(e) {
+      showNotification("Error reading file. Please upload a valid CSV.", type = "error")
+      dat(NULL)
+    })
+  })
+  
+  observeEvent(input$plot_button, {
+    req(dat())
+    
+    output$volcano_plot <- renderPlot({
+      drawVolcano <- function(dat.input, str.title, pval.cutoff, logFC.cutoff, n.label) {
+        myTitle <- as.character(str.title)
+        pval.cutoff <- as.numeric(pval.cutoff)
+        logFC.cutoff <- as.numeric(logFC.cutoff)
+        n.label <- as.numeric(n.label)
+        
+        tab.pos <- dat.input %>%
+          subset(p_val_adj < pval.cutoff & logFC > logFC.cutoff)
+        
+        lab.pos <- tab.pos %>% slice_head(n = n.label)
+        
+        tab.neg <- dat.input %>%
+          subset(p_val_adj < pval.cutoff & logFC < -logFC.cutoff)
+        
+        lab.neg <- tab.neg %>% slice_head(n = n.label)
+        
+        tab.non <- dat.input %>% subset(!gene_names %in% c(tab.pos$gene_names, tab.neg$gene_names))
+        
+        fig.vol <- ggplot() +
+          geom_point(data = tab.pos,
+                     aes(x = logFC,
+                         y = -log10(p_val_adj)), color = 'red') +
+          geom_point(data = tab.neg,
+                     aes(x = logFC,
+                         y = -log10(p_val_adj)), color = 'blue') +
+          geom_point(data = tab.non,
+                     aes(x = logFC,
+                         y = -log10(p_val_adj)), color = 'gray80') +
+          geom_hline(yintercept = -log10(pval.cutoff), color = 'black', lty = 'dashed') +
+          geom_vline(xintercept = -logFC.cutoff, color = 'black', lty = 'dashed') +
+          geom_vline(xintercept = logFC.cutoff, color = 'black', lty = 'dashed') +
+          theme_pubr() +
+          geom_text_repel(data = lab.pos,
+                          aes(x = logFC,
+                              y = -log10(p_val_adj),
+                              label = gene_names), max.overlaps = 50) +
+          geom_text_repel(data = lab.neg,
+                          aes(x = logFC,
+                              y = -log10(p_val_adj),
+                              label = gene_names), max.overlaps = 50) +
+          labs(title = myTitle)
+        
+        return(fig.vol)
+      }
+      
+      drawVolcano(dat.input = dat(),
+                  str.title = input$title,
+                  pval.cutoff = input$pval_cutoff,
+                  logFC.cutoff = input$logFC_cutoff,
+                  n.label = input$n_label)
+    })
+  })
+}
+
+shinyApp(ui = ui, server = server)
+
