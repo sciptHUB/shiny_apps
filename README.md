@@ -37,8 +37,8 @@ The input CSV file must have the following columns:
 
 ## Example
 
-![Volcano Plot Example](path/to/screenshot.png)
+SampleVolcanoPLot
 
 ## License
 
-[Your License (e.g., MIT License)]
+None
