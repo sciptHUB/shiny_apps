@@ -1,87 +1,95 @@
----
-title: "R Notebook"
-output: html_notebook
----
+library(shiny)
+library(ggplot2)
+library(ggrepel)
+library(ggpubr)
+library(dplyr)
 
-```{r}
-library(tidyverse)
-```
+ui <- fluidPage(
+  titlePanel("Volcano Plot Generator"),
+  sidebarLayout(
+    sidebarPanel(
+      fileInput("file", "Upload your data (CSV)"),
+      textInput("title", "Plot Title", "Volcano Plot"),
+      numericInput("pval_cutoff", "P-value Cutoff", 0.05),
+      numericInput("logFC_cutoff", "LogFC Cutoff", 1),
+      numericInput("n_label", "Number of Labels", 20),
+      actionButton("plot_button", "Generate Plot")
+    ),
+    mainPanel(
+      plotOutput("volcano_plot")
+    )
+  )
+)
 
-```{r}
-fd <- "/Users/patipark/Library/CloudStorage/Dropbox/UMass_Chan/NLRP3_project/Silicosis/Results_Trailmaker/DEG_files"
-
-setwd(fd)
-dat <- read.csv("DEG_Silicosis2_Control3.csv")
-```
-
-Draw Volcano plot.
-```{r}
-# use data from Table.DEG
-# function to draw volcano plots
-drawVolcano <- function(dat.input, str.title, pval.cutoff, logFC.cutoff, n.label) {
-  library(ggrepel)
-  library(ggpubr)
-  myTitle <- as.character(str.title)
-  pval.cutoff <- as.numeric(pval.cutoff)
-  logFC.cutoff <- as.numeric(logFC.cutoff)
-  n.label <- as.numeric(n.label)
+server <- function(input, output) {
+  dat <- reactiveVal(NULL)
   
-  # subset table for positive logFC
-  tab.pos <- dat.input %>% 
-    subset(p_val_adj < pval.cutoff & logFC > logFC.cutoff) # change from adj.P.Val
+  observeEvent(input$file, {
+    req(input$file)
+    tryCatch({
+      dat(read.csv(input$file$datapath))
+    }, error = function(e) {
+      showNotification("Error reading file. Please upload a valid CSV.", type = "error")
+      dat(NULL)
+    })
+  })
   
-  lab.pos <- tab.pos %>% slice_head(n = n.label)
-  
-  # subset table for negative logFC
-  tab.neg <- dat.input %>% 
-    subset(p_val_adj < pval.cutoff & logFC < -logFC.cutoff)
-  
-  lab.neg <- tab.neg %>% slice_head(n = n.label)
-  
-  # subset table for non-significant 
-  tab.non <- dat.input %>% subset(!gene_names %in% c(tab.pos$gene_names,tab.neg$gene_names))
-  
-  fig.vol <- ggplot() +
-    geom_point(data = tab.pos,
-               aes(x = logFC,
-                   y = -log10(p_val_adj)), color = 'red') +
-    geom_point(data = tab.neg,
-               aes(x = logFC,
-                   y = -log10(p_val_adj)), color = 'blue') +
-    geom_point(data = tab.non,
-               aes(x = logFC,
-                   y = -log10(p_val_adj)), color = 'gray80') +
-    geom_hline(yintercept = -log10(pval.cutoff), color = 'black', lty = 'dashed') +
-    geom_vline(xintercept = -logFC.cutoff, color = 'black', lty = 'dashed') +
-    geom_vline(xintercept = logFC.cutoff, color = 'black', lty = 'dashed') +
-    theme_pubr() +
-    geom_text_repel(data = lab.pos,
-                    aes(x = logFC,
-                        y = -log10(p_val_adj),
-                        label = gene_names), max.overlaps = 50) +
-    geom_text_repel(data = lab.neg,
-                    aes(x = logFC,
-                        y = -log10(p_val_adj),
-                        label = gene_names), max.overlaps = 50) +
-    labs(title = myTitle)
-  
-  return(fig.vol)    
+  observeEvent(input$plot_button, {
+    req(dat())
+    
+    output$volcano_plot <- renderPlot({
+      drawVolcano <- function(dat.input, str.title, pval.cutoff, logFC.cutoff, n.label) {
+        myTitle <- as.character(str.title)
+        pval.cutoff <- as.numeric(pval.cutoff)
+        logFC.cutoff <- as.numeric(logFC.cutoff)
+        n.label <- as.numeric(n.label)
+        
+        tab.pos <- dat.input %>%
+          subset(p_val_adj < pval.cutoff & logFC > logFC.cutoff)
+        
+        lab.pos <- tab.pos %>% slice_head(n = n.label)
+        
+        tab.neg <- dat.input %>%
+          subset(p_val_adj < pval.cutoff & logFC < -logFC.cutoff)
+        
+        lab.neg <- tab.neg %>% slice_head(n = n.label)
+        
+        tab.non <- dat.input %>% subset(!gene_names %in% c(tab.pos$gene_names, tab.neg$gene_names))
+        
+        fig.vol <- ggplot() +
+          geom_point(data = tab.pos,
+                     aes(x = logFC,
+                         y = -log10(p_val_adj)), color = 'red') +
+          geom_point(data = tab.neg,
+                     aes(x = logFC,
+                         y = -log10(p_val_adj)), color = 'blue') +
+          geom_point(data = tab.non,
+                     aes(x = logFC,
+                         y = -log10(p_val_adj)), color = 'gray80') +
+          geom_hline(yintercept = -log10(pval.cutoff), color = 'black', lty = 'dashed') +
+          geom_vline(xintercept = -logFC.cutoff, color = 'black', lty = 'dashed') +
+          geom_vline(xintercept = logFC.cutoff, color = 'black', lty = 'dashed') +
+          theme_pubr() +
+          geom_text_repel(data = lab.pos,
+                          aes(x = logFC,
+                              y = -log10(p_val_adj),
+                              label = gene_names), max.overlaps = 50) +
+          geom_text_repel(data = lab.neg,
+                          aes(x = logFC,
+                              y = -log10(p_val_adj),
+                              label = gene_names), max.overlaps = 50) +
+          labs(title = myTitle)
+        
+        return(fig.vol)
+      }
+      
+      drawVolcano(dat.input = dat(),
+                  str.title = input$title,
+                  pval.cutoff = input$pval_cutoff,
+                  logFC.cutoff = input$logFC_cutoff,
+                  n.label = input$n_label)
+    })
+  })
 }
-```
 
-
-```{r}
-# for comparison by Virulence
-Fig.Volcano <- drawVolcano(dat.input = dat,
-                           str.title = "Silicosis2/Control3",
-                           pval.cutoff = 0.05,
-                           logFC.cutoff = 1,
-                           n.label = 20)
-
-Fig.Volcano
-
-```
-
-
-
-
+shinyApp(ui = ui, server = server)
