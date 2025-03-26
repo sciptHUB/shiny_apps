@@ -37,7 +37,7 @@ The input CSV file must have the following columns:
 
 ## Example
 
-SampleVolcanoPLot
+[SampleVolcanoPLot.png](https://github.com/sciptHUB/shiny_apps/edit/main/README.md#:~:text=SampleVolcanoPLot-,SampleVolcanoPLot,-.png)
 
 ## License
 
